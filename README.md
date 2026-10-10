@@ -1,5 +1,7 @@
 # Loan Eligibility Simulator
 
+![CI](https://github.com/ShaneKolkoto/loan-eligibility-simulator/actions/workflows/ci.yml/badge.svg)
+
 A responsive frontend that lets a customer enter their income, expenses, and a
 desired loan amount, and see an estimated eligibility result with a clear
 breakdown of the reasoning.
@@ -25,17 +27,17 @@ breakdown of the reasoning.
 
 ## Stack
 
-| Concern            | Choice                                  |
-| ------------------ | --------------------------------------- |
-| UI                 | React 19 + TypeScript (strict)          |
-| Build tool         | Vite 8                                  |
-| Validation         | Zod 4                                   |
-| Unit / component   | Vitest 5 + React Testing Library        |
-| E2E                | Playwright                              |
-| Mocked API         | MSW 3 (Mock Service Worker)             |
-| Containerisation   | Docker (multi-stage, non-root, nginx)   |
-| CI                 | GitHub Actions                          |
-| Lint / format      | ESLint 10 + Prettier                    |
+| Concern          | Choice                                |
+| ---------------- | ------------------------------------- |
+| UI               | React 19 + TypeScript (strict)        |
+| Build tool       | Vite 8                                |
+| Validation       | Zod 4                                 |
+| Unit / component | Vitest 5 + React Testing Library      |
+| E2E              | Playwright                            |
+| Mocked API       | MSW 3 (Mock Service Worker)           |
+| Containerisation | Docker (multi-stage, non-root, nginx) |
+| CI               | GitHub Actions                        |
+| Lint / format    | ESLint 10 + Prettier                  |
 
 ---
 
@@ -121,22 +123,22 @@ To stop the container, `Ctrl+C` (or `docker stop <id>` if run detached).
 
 ## Scripts
 
-| Command                | What it does                                          |
-| ---------------------- | ----------------------------------------------------- |
-| `pnpm dev`             | Start the Vite dev server                             |
-| `pnpm build`           | Type-check and produce a production bundle in `dist/` |
-| `pnpm preview`         | Serve the production bundle locally                   |
-| `pnpm lint`            | Run ESLint (fails on warnings)                        |
-| `pnpm lint:fix`        | Run ESLint and auto-fix what it can                   |
-| `pnpm format`          | Format with Prettier                                  |
-| `pnpm format:check`    | Check formatting without writing                      |
-| `pnpm typecheck`       | Run `tsc --noEmit`                                    |
-| `pnpm test`            | Run the Vitest suite once                             |
-| `pnpm test:watch`      | Run Vitest in watch mode                              |
-| `pnpm test:ui`         | Run Vitest with the interactive UI                    |
-| `pnpm test:coverage`   | Run Vitest with coverage                              |
-| `pnpm e2e`             | Run Playwright end-to-end tests                       |
-| `pnpm verify`          | Lint + typecheck + test + build — the full gate       |
+| Command              | What it does                                          |
+| -------------------- | ----------------------------------------------------- |
+| `pnpm dev`           | Start the Vite dev server                             |
+| `pnpm build`         | Type-check and produce a production bundle in `dist/` |
+| `pnpm preview`       | Serve the production bundle locally                   |
+| `pnpm lint`          | Run ESLint (fails on warnings)                        |
+| `pnpm lint:fix`      | Run ESLint and auto-fix what it can                   |
+| `pnpm format`        | Format with Prettier                                  |
+| `pnpm format:check`  | Check formatting without writing                      |
+| `pnpm typecheck`     | Run `tsc --noEmit`                                    |
+| `pnpm test`          | Run the Vitest suite once                             |
+| `pnpm test:watch`    | Run Vitest in watch mode                              |
+| `pnpm test:ui`       | Run Vitest with the interactive UI                    |
+| `pnpm test:coverage` | Run Vitest with coverage                              |
+| `pnpm e2e`           | Run Playwright end-to-end tests                       |
+| `pnpm verify`        | Lint + typecheck + test + build — the full gate       |
 
 `pnpm verify` is the same command CI runs. If it's green locally, CI should be green.
 
@@ -173,10 +175,36 @@ pnpm e2e
 
 ## Architecture
 
----
-
 ## Decisions & trade-offs
 
+### Spec deviation: amortization worked example
+
+The API specification's `/calculate-rate` example shows a monthly payment
+of **R7,089.50** for R150,000 at 12.5% over 24 months. Applying the standard
+annuity formula to those same inputs yields **R7,096.10**.
+
+The 6.60 difference appears to be a hand-written artifact in the spec —
+matching R7,089.50 would require either a rate of ~12.15% or a term of
+~24.2 months, both of which contradict the spec's own inputs.
+
+The implementation follows the formula. Tests assert the mathematically
+correct value, and this note records the deviation deliberately rather than
+silently. I'd raise it with the backend team before integrating for real —
+a 6-rand difference per month compounds across a portfolio.
+
+### Validation rules come from the API, not the client
+
+The eligibility engine takes the validation rules as an argument rather than
+hard-coding thresholds. This mirrors the spec's `/validation-rules` endpoint,
+and means a product change (e.g. raising the minimum income) is a data
+change, not a frontend release.
+
+### Mock backend calls the real domain logic
+
+The MSW handlers invoke `evaluateEligibility` directly, so the mocked backend
+and the frontend's own calculations cannot drift. If the domain logic
+changes, the mock follows automatically — and the mock behaves like a real
+Spring service would: same inputs, same outputs.
 
 ---
 
