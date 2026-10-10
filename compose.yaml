@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    develop:
+      watch:
+        # Rebuild the production image whenever anything in the build
+        # context changes. .dockerignore already excludes node_modules,
+        # dist, .git, coverage, logs and env files, so we don't need to
+        # enumerate paths here — any change that would actually alter the
+        # image triggers a rebuild, and nothing else does.
+        - action: rebuild
+          path: .
+
+  # ----------------------------------------------------------------------
+  # Optional: Vite dev server inside a container, with HMR on :5173.
+  #
+  # Use this only if you want the tight feedback loop inside Docker
+  # instead of running `pnpm dev` on your host. Start it with:
+  #
+  #     docker compose up dev
+  #
+  # and open http://localhost:5173. The `app` service above stays as the
+  # production-artifact check (`docker compose up app` / `docker compose watch`).
+  #
+  # dev:
+  #   image: node:22-alpine
+  #   working_dir: /app
+  #   command: sh -c "corepack enable && pnpm install && pnpm dev --host 0.0.0.0"
+  #   ports:
+  #     - "5173:5173"
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   environment:
+  #     - NODE_ENV=development
