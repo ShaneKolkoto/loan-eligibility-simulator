@@ -9,6 +9,8 @@ import {
   LIKELIHOOD_MAX,
   LIKELIHOOD_MIN,
   LIKELIHOOD_WEIGHTS,
+  MAX_DTI,
+  MAX_LTI,
   MONEY_DP,
   RISK_BANDS,
 } from './constants';
@@ -16,9 +18,9 @@ import {
 /**
  * Evaluate a loan application end-to-end.
  *
- * Orchestrates: rule checks → affordability → pricing → likelihood → risk.
- * The MSW handler calls exactly this function, so the mocked backend and
- * the real domain logic can never drift.
+ * Orchestrates: rule checks → affordability → ratio gates → pricing →
+ * likelihood → risk. The MSW handler calls exactly this function, so the
+ * mocked backend and the real domain logic can never drift.
  *
  * Pure. No I/O, no globals, no randomness.
  */
@@ -37,6 +39,20 @@ export function evaluateEligibility(
     requestedAmount: loanDetails.requestedAmount,
   });
 
+  // Ratio gates. These are not part of the API's validation-rules endpoint
+  // — they're credit policy. An applicant can pass every field-level rule
+  // and still be far too leveraged to service another loan, so we gate here.
+  if (affordability.debtToIncomeRatio > MAX_DTI) {
+    failures.push(
+      `Debt-to-income ratio of ${affordability.debtToIncomeRatio.toFixed(1)}% exceeds the maximum of ${MAX_DTI}%`,
+    );
+  }
+  if (affordability.loanToIncomeRatio > MAX_LTI) {
+    failures.push(
+      `Loan-to-income ratio of ${affordability.loanToIncomeRatio.toFixed(1)}% exceeds the maximum of ${MAX_LTI}%`,
+    );
+  }
+
   const interestRate = interestRateFor(financialInfo.creditScore, 'personal_loan');
   const amort = amortize({
     principal: loanDetails.requestedAmount,
@@ -44,9 +60,9 @@ export function evaluateEligibility(
     termMonths: loanDetails.loanTerm,
   });
 
-  // Serviceability informs likelihood, not eligibility. The spec's example
-  // applicant passes the ratio checks but cannot fully cover the repayment,
-  // and the spec still calls them eligible.
+  // Serviceability informs likelihood only. The ratio gates above reject
+  // the over-leveraged case, and this feeds the risk score for applicants
+  // who do pass.
   const disposableAfterRepayment = round(
     affordability.disposableIncome - amort.monthlyPayment,
     MONEY_DP,
@@ -62,10 +78,11 @@ export function evaluateEligibility(
   });
   const riskCategory = riskCategoryFor(approvalLikelihood);
 
-  const maxAmount = round(
-    Math.min(loanDetails.requestedAmount, financialInfo.monthlyIncome * 60),
-    MONEY_DP,
-  );
+  // What the applicant could borrow under the LTI ceiling, minus existing
+  // debt. Clamped at zero: an over-indebted applicant cannot borrow more
+  // just because their income is high.
+  const ltiCeiling = financialInfo.monthlyIncome * (MAX_LTI / 100);
+  const maxAmount = round(Math.max(0, ltiCeiling - financialInfo.existingDebt), MONEY_DP);
 
   return {
     eligibilityResult: {

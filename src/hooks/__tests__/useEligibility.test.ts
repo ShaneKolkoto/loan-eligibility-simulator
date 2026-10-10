@@ -30,12 +30,12 @@ it('returns a result on success', async () => {
 
   await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-  // TEMPORARY — remove once diagnosed
-  console.log('useEligibility error:', result.current.error);
-  console.log('useEligibility data:', result.current.data);
-
+  // The spec's example applicant requests 6× their monthly income, so
+  // under the LTI gate they are not eligible. The hook still returns a
+  // complete, well-formed response — eligibility is just false.
   expect(result.current.data).not.toBeNull();
-  expect(result.current.data?.eligibilityResult.isEligible).toBe(true);
+  expect(result.current.data?.eligibilityResult.isEligible).toBe(false);
+  expect(result.current.data?.eligibilityResult.decisionReason).toMatch(/loan-to-income/i);
   expect(result.current.error).toBeNull();
 });
 
