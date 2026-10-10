@@ -53,7 +53,7 @@ export const recommendedLoanSchema = z.object({
 export const affordabilityAnalysisSchema = z.object({
   disposableIncome: z.number(),
   debtToIncomeRatio: z.number().min(0).max(100),
-  loanToIncomeRatio: z.number().min(0).max(100),
+  loanToIncomeRatio: z.number().nonnegative(),
   affordabilityScore: affordabilityScoreSchema,
 });
 
