@@ -4,8 +4,6 @@ A responsive frontend that lets a customer enter their income, expenses, and a
 desired loan amount, and see an estimated eligibility result with a clear
 breakdown of the reasoning.
 
-> Take-home submission for the Capitec **Software Engineer: Front-End** role.
-
 ---
 
 ## Table of contents
