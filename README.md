@@ -1,6 +1,3 @@
-Here's the updated README with the `.env` setup documented. I've also fixed the mojibake in the project-structure tree — the box-drawing characters got mangled by encoding somewhere along the way.
-
-```markdown
 # Loan Eligibility Simulator
 
 ![CI](https://github.com/ShaneKolkoto/loan-eligibility-simulator/actions/workflows/ci.yml/badge.svg)
