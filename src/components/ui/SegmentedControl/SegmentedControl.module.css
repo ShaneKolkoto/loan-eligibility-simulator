@@ -1,0 +1,76 @@
+.fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.legend {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  padding: 0;
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+  user-select: none;
+}
+
+.pill:hover {
+  border-color: var(--color-primary);
+}
+
+.pillSelected {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: var(--weight-medium);
+}
+
+/* Hide the native radio but keep it focusable for keyboard users. */
+.input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Focus ring on the pill, not the hidden input. */
+.input:focus-visible + span {
+  outline: none;
+}
+
+.pill:has(.input:focus-visible) {
+  box-shadow: var(--focus-ring);
+}
+
+.error {
+  font-size: var(--text-xs);
+  color: var(--color-danger-text);
+}

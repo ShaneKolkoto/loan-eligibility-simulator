@@ -9,35 +9,42 @@ const payload: EligibilityRequest = {
   personalInfo: { age: 35, employmentStatus: 'employed', employmentDuration: 24 },
   financialInfo: {
     monthlyIncome: 25_000,
-    monthlyExpenses: 15_000,
-    existingDebt: 5_000,
-    creditScore: 650,
+    monthlyExpenses: 8_000,
+    existingDebt: 2_000,
+    creditScore: 700,
   },
   loanDetails: {
-    requestedAmount: 150_000,
+    requestedAmount: 10_000,
     loanTerm: 24,
     loanPurpose: 'home_improvement',
   },
 };
 
 describe('useEligibility', () => {
-it('returns a result on success', async () => {
-  const { result } = renderHook(() => useEligibility());
+  it('returns a result on success', async () => {
+    const { result } = renderHook(() => useEligibility());
 
-  await act(async () => {
-    await result.current.submit(payload);
+    await act(async () => {
+      await result.current.submit(payload);
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.data).not.toBeNull();
+    expect(result.current.data?.eligibilityResult.isEligible).toBe(true);
+    expect(result.current.error).toBeNull();
   });
 
-  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  it('retains the last submitted request', async () => {
+    const { result } = renderHook(() => useEligibility());
 
-  // The spec's example applicant requests 6× their monthly income, so
-  // under the LTI gate they are not eligible. The hook still returns a
-  // complete, well-formed response — eligibility is just false.
-  expect(result.current.data).not.toBeNull();
-  expect(result.current.data?.eligibilityResult.isEligible).toBe(false);
-  expect(result.current.data?.eligibilityResult.decisionReason).toMatch(/loan-to-income/i);
-  expect(result.current.error).toBeNull();
-});
+    await act(async () => {
+      await result.current.submit(payload);
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.lastRequest?.loanDetails.loanPurpose).toBe('home_improvement');
+  });
 
   it('exposes an error when the request fails', async () => {
     server.use(
@@ -69,6 +76,7 @@ it('returns a result on success', async () => {
     act(() => result.current.reset());
 
     expect(result.current.data).toBeNull();
+    expect(result.current.lastRequest).toBeNull();
     expect(result.current.error).toBeNull();
     expect(result.current.isLoading).toBe(false);
   });

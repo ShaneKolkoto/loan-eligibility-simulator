@@ -1,3 +1,6 @@
+Here's the updated README with the `.env` setup documented. I've also fixed the mojibake in the project-structure tree — the box-drawing characters got mangled by encoding somewhere along the way.
+
+```markdown
 # Loan Eligibility Simulator
 
 ![CI](https://github.com/ShaneKolkoto/loan-eligibility-simulator/actions/workflows/ci.yml/badge.svg)
@@ -15,6 +18,7 @@ breakdown of the reasoning.
 - [Getting started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Install](#install)
+  - [Environment variables](#environment-variables)
   - [Run locally](#run-locally)
   - [Run with Docker](#run-with-docker)
 - [Scripts](#scripts)
@@ -42,28 +46,33 @@ breakdown of the reasoning.
 ---
 
 ## Project structure
-
 ```
+
 .
 ├── src/
-│   ├── app/                   # app shell, providers
-│   ├── domain/
-│   │   └── eligibility/       # pure business logic (no React)
-│   ├── features/
-│   │   └── eligibility/       # UI + hooks for the loan feature
-│   ├── services/              # API clients / fetch wrappers
-│   ├── components/            # shared UI primitives
-│   ├── lib/                   # helpers, utils
-│   ├── test/                  # test setup, MSW server + handlers
-│   └── main.tsx
-├── Dockerfile                 # multi-stage production image
-├── nginx.conf                 # SPA fallback + caching
+│ ├── app/ # app shell, providers
+│ ├── components/
+│ │ └── ui/ # design-system primitives
+│ ├── domain/
+│ │ └── eligibility/ # pure business logic (no React)
+│ ├── features/
+│ │ └── eligibility/ # UI + validation for the loan feature
+│ ├── hooks/ # useEligibility, useValidationRules
+│ ├── services/
+│ │ └── loans/ # API client, types, Zod schemas
+│ ├── test/ # test setup, MSW server + handlers
+│ ├── index.css # design tokens
+│ └── main.tsx
+├── Dockerfile # multi-stage production image
+├── nginx.conf # SPA fallback + caching
 ├── .dockerignore
-├── .nvmrc                     # Node version
-├── compose.yaml               # watch-mode rebuild loop
-├── .github/workflows/ci.yml   # lint → typecheck → test → build
+├── .nvmrc # Node version
+├── .env.example # environment variable reference
+├── compose.yaml # watch-mode rebuild loop
+├── .github/workflows/ci.yml # lint → typecheck → test → build
 └── package.json
-```
+
+````
 
 ---
 
@@ -81,7 +90,28 @@ breakdown of the reasoning.
 git clone <your-repo-url>
 cd loan-eligibility-simulator
 pnpm install
+````
+
+### Environment variables
+
+The project reads a small number of environment variables. Copy the example
+file to create your local `.env`:
+
+```bash
+cp .env.example .env
 ```
+
+| Variable               | Default | Purpose                                                                        |
+| ---------------------- | ------- | ------------------------------------------------------------------------------ |
+| `VITE_API_BASE_URL`    | `/api`  | Base URL the client fetches from. In dev and test, MSW intercepts it.          |
+| `VITE_ENABLE_MOCK_API` | `true`  | When `true`, MSW starts and serves the API. Set to `false` for a real backend. |
+
+`.env` is gitignored — never commit it. `.env.example` is committed and is the
+source of truth for what the app expects.
+
+> **Note:** Vite only exposes variables prefixed with `VITE_` to client code.
+> This is deliberate — it prevents accidental leakage of server-side secrets
+> into the bundle.
 
 ### Run locally
 
@@ -116,6 +146,17 @@ The image is a multi-stage build:
 1. **build** — installs dependencies and produces the static bundle with `pnpm build`.
 2. **runtime** — serves the bundle from `nginx:alpine` as a **non-root** user, with
    an SPA fallback so client-side routes resolve correctly.
+
+Because Vite bakes environment variables into the bundle at build time, the
+Docker build accepts `VITE_ENABLE_MOCK_API` as a build arg:
+
+```bash
+# Default: MSW is bundled in, container is self-contained
+docker build -t loan-eligibility-simulator:local .
+
+# Point at a real backend instead
+docker build --build-arg VITE_ENABLE_MOCK_API=false -t loan-eligibility-simulator:real .
+```
 
 To stop the container, `Ctrl+C` (or `docker stop <id>` if run detached).
 
@@ -175,6 +216,10 @@ pnpm e2e
 
 ## Architecture
 
+_(to be completed)_
+
+---
+
 ## Decisions & trade-offs
 
 ### Spec deviation: amortization worked example
@@ -209,3 +254,76 @@ Spring service would: same inputs, same outputs.
 ---
 
 ## What I'd do with more time
+
+````
+
+## You also need to create `.env.example`
+
+```bash
+cat > .env.example <<'EOF'
+# Environment variables for the Loan Eligibility Simulator.
+#
+# Copy this file to `.env` for local development:
+#
+#     cp .env.example .env
+#
+# Vite only exposes variables prefixed with VITE_ to client-side code.
+
+# Base URL the API client fetches from. In dev and test, MSW intercepts
+# requests to this path, so it doesn't need to resolve to a real server.
+VITE_API_BASE_URL=/api
+
+# When 'true', MSW starts and serves the mocked API. Set to 'false' to
+# point the app at a real backend instead.
+#
+# In Docker, this is passed as a build arg rather than read from .env,
+# because Vite bakes env vars into the bundle at build time:
+#
+#     docker build --build-arg VITE_ENABLE_MOCK_API=false -t app:real .
+VITE_ENABLE_MOCK_API=true
+EOF
+````
+
+The quoted `'EOF'` matters on Git Bash — it stops the shell from expanding `$` characters, which would silently corrupt the file.
+
+## Confirm `.env` is gitignored
+
+```bash
+git check-ignore -v .env
+```
+
+Should print a rule. If it doesn't, add this to `.gitignore`:
+
+```gitignore
+# Environment files
+.env
+.env.*
+!.env.example
+```
+
+The `!.env.example` line un-ignores the example file so it _is_ committed. That's the whole point — the example documents what the app expects, without leaking values.
+
+## What changed in the README
+
+- **New "Environment variables" section** between Install and Run locally, with the `cp .env.example .env` instruction, a table of the two variables, and a note about the `VITE_` prefix
+- **Docker section** now shows the `--build-arg VITE_ENABLE_MOCK_API=false` form for pointing at a real backend
+- **Project structure** includes `.env.example` and fixes the mangled box-drawing characters from the earlier encoding issue
+- **ToC** updated with the new Environment variables entry
+
+## Verify
+
+```bash
+pnpm verify
+```
+
+Then confirm a fresh clone would work:
+
+```bash
+# Simulate a fresh clone in a temp directory
+cd /tmp
+git clone <your-repo-url> test-clone
+cd test-clone
+cp .env.example .env
+pnpm install
+pnpm verify
+```

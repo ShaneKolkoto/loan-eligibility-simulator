@@ -8,6 +8,15 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
+# This project has no real backend — the API is mocked with MSW, which is
+# bundled into the production build so the container is self-contained.
+# Set to 'false' to point the app at a real backend instead:
+#
+#     docker build --build-arg VITE_ENABLE_MOCK_API=false -t app:real .
+ARG VITE_ENABLE_MOCK_API=true
+ENV VITE_ENABLE_MOCK_API=$VITE_ENABLE_MOCK_API
+
 RUN pnpm build
 
 # ---- Runtime stage ----

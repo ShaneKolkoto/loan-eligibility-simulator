@@ -78,13 +78,14 @@ describe('evaluateEligibility', () => {
     expect(result).toHaveProperty('affordabilityAnalysis');
   });
 
-  it('marks the spec example applicant as ineligible under credit policy', () => {
+  it('rejects the spec example applicant on serviceability', () => {
+    // The spec's example shows isEligible: true, but the applicant has
+    // R5,000 disposable and the R150,000/24-month instalment is R7,096.
+    // They cannot service the loan. See README.
     const result = evaluateEligibility(baseRequest, rules);
 
-    // The spec's example shows isEligible: true, but the applicant requests
-    // 6× their monthly income — far over the 60% LTI ceiling. See README.
     expect(result.eligibilityResult.isEligible).toBe(false);
-    expect(result.eligibilityResult.decisionReason).toMatch(/loan-to-income/i);
+    expect(result.eligibilityResult.decisionReason).toMatch(/disposable income/i);
   });
 
   it('produces a monthly payment matching the amortization formula', () => {
@@ -115,6 +116,57 @@ describe('evaluateEligibility', () => {
     expect(result.eligibilityResult.isEligible).toBe(true);
   });
 
+  it('approves a high-LTI applicant who can service the repayment', () => {
+    // The R25,000 loan is 100% of monthly income, well above the 60% soft
+    // threshold — but R24,985 of disposable income easily covers the
+    // R1,230 instalment. Serviceability, not LTI, gates a term loan.
+    const result = evaluateEligibility(
+      {
+        ...baseRequest,
+        financialInfo: {
+          monthlyIncome: 25_000,
+          monthlyExpenses: 15,
+          existingDebt: 0,
+          creditScore: 500,
+        },
+        loanDetails: {
+          requestedAmount: 25_000,
+          loanTerm: 12,
+          loanPurpose: 'home_improvement',
+        },
+      },
+      rules,
+    );
+
+    expect(result.eligibilityResult.isEligible).toBe(true);
+    expect(result.affordabilityAnalysis.loanToIncomeRatio).toBe(100);
+    // The LTI soft penalty still applies to the risk score.
+    expect(result.eligibilityResult.riskCategory).toBe('medium');
+  });
+
+  it('rejects an applicant who cannot service the repayment', () => {
+    const result = evaluateEligibility(
+      {
+        ...baseRequest,
+        financialInfo: {
+          monthlyIncome: 25_000,
+          monthlyExpenses: 24_990,
+          existingDebt: 0,
+          creditScore: 700,
+        },
+        loanDetails: {
+          requestedAmount: 25_000,
+          loanTerm: 12,
+          loanPurpose: 'home_improvement',
+        },
+      },
+      rules,
+    );
+
+    expect(result.eligibilityResult.isEligible).toBe(false);
+    expect(result.eligibilityResult.decisionReason).toMatch(/disposable income after repayment/i);
+  });
+
   it('rejects an applicant whose DTI exceeds the threshold', () => {
     const result = evaluateEligibility(
       {
@@ -137,20 +189,6 @@ describe('evaluateEligibility', () => {
 
     expect(result.eligibilityResult.isEligible).toBe(false);
     expect(result.eligibilityResult.decisionReason).toMatch(/debt-to-income/i);
-  });
-
-  it('rejects an applicant whose LTI exceeds the threshold', () => {
-    const result = evaluateEligibility(
-      {
-        ...baseRequest,
-        financialInfo: { ...baseRequest.financialInfo, monthlyIncome: 15_000, existingDebt: 0 },
-        loanDetails: { ...baseRequest.loanDetails, requestedAmount: 100_000 },
-      },
-      rules,
-    );
-
-    expect(result.eligibilityResult.isEligible).toBe(false);
-    expect(result.eligibilityResult.decisionReason).toMatch(/loan-to-income/i);
   });
 
   it('rejects applicants below the minimum income', () => {

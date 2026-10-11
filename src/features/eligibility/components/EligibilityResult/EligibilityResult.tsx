@@ -1,10 +1,13 @@
 import { Alert, Card } from '@/components';
-import type { EligibilityResponse } from '@/services/loans/types';
+import type { EligibilityResponse, LoanProduct, LoanPurpose } from '@/services/loans/types';
 import { AffordabilityBreakdown } from '../AffordabilityBreakdown/AffordabilityBreakdown';
+import { MatchedProduct } from '../MatchedProduct/MatchedProduct';
 import styles from './EligibilityResult.module.css';
 
 interface EligibilityResultProps {
   result: EligibilityResponse;
+  products: LoanProduct[];
+  loanPurpose: LoanPurpose;
 }
 
 const CURRENCY = new Intl.NumberFormat('en-ZA', {
@@ -13,7 +16,7 @@ const CURRENCY = new Intl.NumberFormat('en-ZA', {
   maximumFractionDigits: 2,
 });
 
-export function EligibilityResult({ result }: EligibilityResultProps) {
+export function EligibilityResult({ result, products, loanPurpose }: EligibilityResultProps) {
   const { eligibilityResult, recommendedLoan, affordabilityAnalysis } = result;
   const eligible = eligibilityResult.isEligible;
 
@@ -26,6 +29,10 @@ export function EligibilityResult({ result }: EligibilityResultProps) {
       >
         {eligibilityResult.decisionReason}
       </Alert>
+
+      {/* Only show the matched product when the applicant is eligible.
+          Showing a product to someone we've just declined would be odd. */}
+      {eligible ? <MatchedProduct products={products} loanPurpose={loanPurpose} /> : null}
 
       <Card title="Affordability">
         <AffordabilityBreakdown analysis={affordabilityAnalysis} />

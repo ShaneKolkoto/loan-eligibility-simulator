@@ -1,13 +1,19 @@
 import { Alert, Button, Card, Spinner } from '@/components';
 import { useEligibility } from '@/hooks/useEligibility';
+import { useLoanProducts } from '@/hooks/useLoanProducts';
 import { useValidationRules } from '@/hooks/useValidationRules';
 import { EligibilityForm } from '@/features/eligibility/components/EligibilityForm/EligibilityForm';
 import { EligibilityResult } from '@/features/eligibility/components/EligibilityResult/EligibilityResult';
+import type { LoanPurpose } from '@/services/loans/types';
 import styles from './App.module.css';
 
 export default function App() {
   const rulesState = useValidationRules();
+  const productsState = useLoanProducts();
   const eligibilityState = useEligibility();
+
+  const submittedPurpose: LoanPurpose =
+    eligibilityState.lastRequest?.loanDetails.loanPurpose ?? 'other';
 
   return (
     <div className={styles.page}>
@@ -35,6 +41,7 @@ export default function App() {
             ) : (
               <EligibilityForm
                 rules={rulesState.rules}
+                products={productsState.products}
                 isSubmitting={eligibilityState.isLoading}
                 onSubmit={eligibilityState.submit}
               />
@@ -53,7 +60,11 @@ export default function App() {
               </div>
             </Alert>
           ) : eligibilityState.data ? (
-            <EligibilityResult result={eligibilityState.data} />
+            <EligibilityResult
+              result={eligibilityState.data}
+              products={productsState.products}
+              loanPurpose={submittedPurpose}
+            />
           ) : (
             <Card title="Your result">
               <p className={styles.placeholder}>

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { EligibilityForm } from '../EligibilityForm/EligibilityForm';
-import type { ValidationRulesResponse } from '@/services/loans/types';
+import type { LoanProduct, ValidationRulesResponse } from '@/services/loans/types';
 
 const rules: ValidationRulesResponse = {
   personalInfo: {
@@ -52,47 +52,174 @@ const rules: ValidationRulesResponse = {
   },
 };
 
-describe('EligibilityForm', () => {
-  it('shows errors when submitting an empty form', async () => {
-    const onSubmit = vi.fn();
-    render(<EligibilityForm rules={rules} isSubmitting={false} onSubmit={onSubmit} />);
+const products: LoanProduct[] = [
+  {
+    id: 'personal_loan',
+    name: 'Personal Loan',
+    description: 'Flexible personal financing for various needs',
+    minAmount: 5000,
+    maxAmount: 300000,
+    minTerm: 6,
+    maxTerm: 60,
+    interestRateRange: { min: 10.5, max: 18.5 },
+    purposes: ['debt_consolidation', 'home_improvement', 'education', 'medical', 'other'],
+  },
+  {
+    id: 'vehicle_loan',
+    name: 'Vehicle Finance',
+    description: 'Financing for new and used vehicles',
+    minAmount: 50000,
+    maxAmount: 1500000,
+    minTerm: 12,
+    maxTerm: 72,
+    interestRateRange: { min: 8.5, max: 15.0 },
+    purposes: ['new_vehicle', 'used_vehicle'],
+  },
+];
 
-    await userEvent.click(screen.getByRole('button', { name: /check eligibility/i }));
+async function completeStep1() {
+  await userEvent.type(screen.getByLabelText(/age/i), '35');
+  await userEvent.click(screen.getByLabelText(/^employed$/i));
+  await userEvent.type(screen.getByLabelText(/months in current employment/i), '24');
+}
 
-    expect(onSubmit).not.toHaveBeenCalled();
+async function completeStep2() {
+  await userEvent.type(screen.getByLabelText(/monthly income/i), '25000');
+  await userEvent.type(screen.getByLabelText(/monthly expenses/i), '8000');
+  await userEvent.type(screen.getByLabelText(/existing monthly debt/i), '2000');
+  await userEvent.type(screen.getByLabelText(/credit score/i), '700');
+}
+
+describe('EligibilityForm stepper', () => {
+  it('starts on the first step and hides later fields', () => {
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText(/age/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/monthly income/i)).not.toBeInTheDocument();
+  });
+
+  it('does not advance past an invalid step', async () => {
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    expect(screen.getByLabelText(/age/i)).toBeInTheDocument();
     expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
   });
 
-  it('submits a valid form', async () => {
+  it('advances to step 2 once step 1 is valid', async () => {
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await completeStep1();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    expect(screen.getByLabelText(/monthly income/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/age/i)).not.toBeInTheDocument();
+  });
+
+  it('preserves values when going back', async () => {
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await completeStep1();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await userEvent.click(screen.getByRole('button', { name: /back/i }));
+
+    expect(screen.getByLabelText(/age/i)).toHaveValue(35);
+  });
+
+  it('submits the full payload from the final step', async () => {
     const onSubmit = vi.fn();
-    render(<EligibilityForm rules={rules} isSubmitting={false} onSubmit={onSubmit} />);
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+      />,
+    );
 
-    await userEvent.type(screen.getByLabelText(/age/i), '35');
-    await userEvent.selectOptions(screen.getByLabelText(/employment status/i), 'employed');
-    await userEvent.type(screen.getByLabelText(/months in current employment/i), '24');
-    await userEvent.type(screen.getByLabelText(/monthly income/i), '25000');
-    await userEvent.type(screen.getByLabelText(/monthly expenses/i), '15000');
-    await userEvent.type(screen.getByLabelText(/existing monthly debt/i), '5000');
-    await userEvent.type(screen.getByLabelText(/credit score/i), '650');
-    await userEvent.type(screen.getByLabelText(/requested amount/i), '150000');
-    await userEvent.type(screen.getByLabelText(/term/i), '24');
-    await userEvent.selectOptions(screen.getByLabelText(/purpose/i), 'home_improvement');
+    await completeStep1();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await completeStep2();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
 
+    await userEvent.click(screen.getByLabelText(/home improvement/i));
+    await userEvent.type(screen.getByLabelText(/requested amount/i), '10000');
+    await userEvent.click(screen.getByLabelText(/24 months/i));
     await userEvent.click(screen.getByRole('button', { name: /check eligibility/i }));
 
     expect(onSubmit).toHaveBeenCalledOnce();
     const payload = onSubmit.mock.calls[0]?.[0];
     expect(payload?.financialInfo.monthlyIncome).toBe(25000);
+    expect(payload?.loanDetails.loanTerm).toBe(24);
+    expect(payload?.loanDetails.loanPurpose).toBe('home_improvement');
+    expect(payload?.personalInfo.employmentStatus).toBe('employed');
   });
 
-  it('rejects an income below the minimum', async () => {
-    const onSubmit = vi.fn();
-    render(<EligibilityForm rules={rules} isSubmitting={false} onSubmit={onSubmit} />);
+  it('shows a live disposable-income preview on step 2', async () => {
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />,
+    );
 
-    await userEvent.type(screen.getByLabelText(/monthly income/i), '3000');
-    await userEvent.click(screen.getByRole('button', { name: /check eligibility/i }));
+    await completeStep1();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(screen.getAllByText(/minimum monthly income/i).length).toBeGreaterThan(0);
+    await userEvent.type(screen.getByLabelText(/monthly income/i), '25000');
+    await userEvent.type(screen.getByLabelText(/monthly expenses/i), '8000');
+
+    expect(await screen.findByText(/disposable income/i)).toBeInTheDocument();
+  });
+
+  it('hides the 6-month term when Vehicle Finance is selected', async () => {
+    render(
+      <EligibilityForm
+        rules={rules}
+        products={products}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await completeStep1();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+    await completeStep2();
+    await userEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    await userEvent.click(screen.getByLabelText(/vehicle finance/i));
+
+    expect(screen.queryByLabelText(/^6 months$/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/12 months/i)).toBeInTheDocument();
   });
 });

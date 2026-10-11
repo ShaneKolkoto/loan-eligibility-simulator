@@ -39,10 +39,7 @@ export const emptyForm: FormValues = {
  * All fields are checked; nothing short-circuits, so the user sees every
  * problem at once rather than one at a time.
  */
-export function validateForm(
-  values: FormValues,
-  rules: ValidationRulesResponse,
-): FieldErrors {
+export function validateForm(values: FormValues, rules: ValidationRulesResponse): FieldErrors {
   const errors: FieldErrors = {};
 
   // Age
@@ -169,4 +166,30 @@ function toNumber(value: string): number | null {
   if (value.trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Validate only the fields belonging to a given step. Used by the stepper
+ * so each step can gate advancement without validating fields the user
+ * hasn't reached yet.
+ */
+export function validateStep(
+  step: 'about-you' | 'finances' | 'loan',
+  values: FormValues,
+  rules: ValidationRulesResponse,
+): FieldErrors {
+  const allErrors = validateForm(values, rules);
+  const fieldsForStep: Record<typeof step, (keyof FormValues)[]> = {
+    'about-you': ['age', 'employmentStatus', 'employmentDuration'],
+    finances: ['monthlyIncome', 'monthlyExpenses', 'existingDebt', 'creditScore'],
+    loan: ['requestedAmount', 'loanTerm', 'loanPurpose'],
+  };
+
+  const relevant = fieldsForStep[step];
+  const stepErrors: FieldErrors = {};
+  for (const field of relevant) {
+    const message = allErrors[field];
+    if (message) stepErrors[field] = message;
+  }
+  return stepErrors;
 }

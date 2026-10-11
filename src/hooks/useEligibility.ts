@@ -4,21 +4,16 @@ import type { EligibilityRequest, EligibilityResponse } from '@/services/loans/t
 
 interface UseEligibilityResult {
   data: EligibilityResponse | null;
+  lastRequest: EligibilityRequest | null;
   isLoading: boolean;
   error: string | null;
   submit: (payload: EligibilityRequest) => Promise<void>;
   reset: () => void;
 }
 
-/**
- * Submit an eligibility request and expose the result.
- *
- * The result is kept until the next submission, so the UI can render the
- * outcome without re-fetching. `reset` clears it — useful if the user edits
- * the form and wants the panel to go back to its empty state.
- */
 export function useEligibility(): UseEligibilityResult {
   const [data, setData] = useState<EligibilityResponse | null>(null);
+  const [lastRequest, setLastRequest] = useState<EligibilityRequest | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,15 +21,12 @@ export function useEligibility(): UseEligibilityResult {
     setIsLoading(true);
     setError(null);
     setData(null);
+    setLastRequest(payload);
     try {
       const result = await checkEligibility(payload);
       setData(result);
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : 'Something went wrong. Please try again.',
-      );
+      setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -42,9 +34,10 @@ export function useEligibility(): UseEligibilityResult {
 
   const reset = useCallback(() => {
     setData(null);
+    setLastRequest(null);
     setError(null);
     setIsLoading(false);
   }, []);
 
-  return { data, isLoading, error, submit, reset };
+  return { data, lastRequest, isLoading, error, submit, reset };
 }
