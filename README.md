@@ -384,4 +384,3 @@ Ordered by impact.
     purpose, but the underlying rate calculation still defaults to the personal
     loan product. Wiring the selected product through to `interestRateFor`
     would complete the picture.
-````
