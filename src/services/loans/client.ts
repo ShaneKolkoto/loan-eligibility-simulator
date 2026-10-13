@@ -103,7 +103,7 @@ async function handle<T>(response: Response, schema: Schema<T>): Promise<T> {
     } catch {
       issues = undefined;
     }
-    throw new ApiError(`Request failed with status ${response.status}`, response.status, issues);
+    throw new ApiError(`/status ${response.status}/`, response.status, issues);
   }
 
   const raw = await response.json();

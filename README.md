@@ -1,6 +1,3 @@
-Here's the updated README with the `.env` setup documented. I've also fixed the mojibake in the project-structure tree — the box-drawing characters got mangled by encoding somewhere along the way.
-
-```markdown
 # Loan Eligibility Simulator
 
 ![CI](https://github.com/ShaneKolkoto/loan-eligibility-simulator/actions/workflows/ci.yml/badge.svg)
@@ -46,33 +43,32 @@ breakdown of the reasoning.
 ---
 
 ## Project structure
-```
 
+```
 .
 ├── src/
-│ ├── app/ # app shell, providers
-│ ├── components/
-│ │ └── ui/ # design-system primitives
-│ ├── domain/
-│ │ └── eligibility/ # pure business logic (no React)
-│ ├── features/
-│ │ └── eligibility/ # UI + validation for the loan feature
-│ ├── hooks/ # useEligibility, useValidationRules
-│ ├── services/
-│ │ └── loans/ # API client, types, Zod schemas
-│ ├── test/ # test setup, MSW server + handlers
-│ ├── index.css # design tokens
-│ └── main.tsx
-├── Dockerfile # multi-stage production image
-├── nginx.conf # SPA fallback + caching
+│   ├── app/                   # app shell, providers
+│   ├── components/
+│   │   └── ui/                # design-system primitives
+│   ├── domain/
+│   │   └── eligibility/       # pure business logic (no React)
+│   ├── features/
+│   │   └── eligibility/       # UI + validation for the loan feature
+│   ├── hooks/                 # useEligibility, useLoanProducts, useValidationRules
+│   ├── services/
+│   │   └── loans/             # API client, types, Zod schemas
+│   ├── test/                  # test setup, MSW server + handlers
+│   ├── index.css              # design tokens
+│   └── main.tsx
+├── Dockerfile                 # multi-stage production image
+├── nginx.conf                 # SPA fallback + caching
 ├── .dockerignore
-├── .nvmrc # Node version
-├── .env.example # environment variable reference
-├── compose.yaml # watch-mode rebuild loop
-├── .github/workflows/ci.yml # lint → typecheck → test → build
+├── .nvmrc                     # Node version
+├── .env.example               # environment variable reference
+├── compose.yaml               # watch-mode rebuild loop
+├── .github/workflows/ci.yml   # lint → typecheck → test → build
 └── package.json
-
-````
+```
 
 ---
 
@@ -90,12 +86,11 @@ breakdown of the reasoning.
 git clone <your-repo-url>
 cd loan-eligibility-simulator
 pnpm install
-````
+```
 
 ### Environment variables
 
-The project reads a small number of environment variables. Copy the example
-file to create your local `.env`:
+Copy the example file to create your local `.env`:
 
 ```bash
 cp .env.example .env
@@ -109,9 +104,9 @@ cp .env.example .env
 `.env` is gitignored — never commit it. `.env.example` is committed and is the
 source of truth for what the app expects.
 
-> **Note:** Vite only exposes variables prefixed with `VITE_` to client code.
-> This is deliberate — it prevents accidental leakage of server-side secrets
-> into the bundle.
+> Vite only exposes variables prefixed with `VITE_` to client code. This is
+> deliberate — it prevents accidental leakage of server-side secrets into the
+> bundle.
 
 ### Run locally
 
@@ -122,7 +117,6 @@ pnpm dev
 The app is served at **http://localhost:5173**.
 
 > The API is mocked in the browser via MSW, so no backend is required.
-> See [Architecture](#architecture) for how the mock layer is wired.
 
 ### Run with Docker
 
@@ -144,7 +138,7 @@ The app is served at **http://localhost:8080** in both cases.
 The image is a multi-stage build:
 
 1. **build** — installs dependencies and produces the static bundle with `pnpm build`.
-2. **runtime** — serves the bundle from `nginx:alpine` as a **non-root** user, with
+2. **runtime** — serves the bundle from `nginx:alpine` as a non-root user, with
    an SPA fallback so client-side routes resolve correctly.
 
 Because Vite bakes environment variables into the bundle at build time, the
@@ -187,36 +181,98 @@ To stop the container, `Ctrl+C` (or `docker stop <id>` if run detached).
 
 ## Testing
 
-Unit and component tests live next to the code they exercise:
+Unit and component tests live next to the code they exercise. The suite is
+concentrated where the risk is:
 
-```
-src/
-├── domain/eligibility/       # pure logic + *.test.ts
-├── features/eligibility/     # components + *.test.tsx
-└── test/                     # shared test setup, MSW server + handlers
-```
+- **Domain** (`src/domain/eligibility/`) — pure functions, exhaustive coverage
+  of every rule and edge case. A wrong number here becomes a wrong decision
+  for a customer.
+- **Hooks** (`src/hooks/`) — the API boundary. Success, failure, and loading
+  paths, tested against MSW.
+- **Feature components** — form validation, the stepper's per-step gating,
+  product-aware term filtering, and the result panel's branching.
+- **UI primitives** — only where there's real behaviour: `Button`'s
+  loading/disabled semantics, `Input`'s error-to-screen-reader wiring.
 
-- **Unit tests** target the pure eligibility engine in `src/domain/eligibility/`
-  — no React, no DOM, fast and deterministic.
-- **Component tests** use React Testing Library and assert on what the user sees,
-  not on implementation details.
-- **Network is mocked with MSW**, so components are tested against realistic
-  request/response behaviour rather than hand-stubbed functions.
-- **E2E tests** (Playwright) cover the end-to-end happy path and a couple of
-  failure paths against a real browser.
+`Card` and `Spinner` are deliberately untested — no branching, covered
+indirectly by every feature test that uses them.
 
-Run everything:
+Run the suite:
 
 ```bash
-pnpm test
-pnpm e2e
+pnpm test          # once
+pnpm test:watch    # watch mode
+pnpm test:coverage # with coverage
+pnpm e2e           # Playwright
 ```
 
 ---
 
 ## Architecture
 
-_(to be completed)_
+The app is layered so each concern can be understood and tested in isolation.
+
+```
+┌───────────────────────────────────────────────────────┐
+│  app/App.tsx           composes hooks + components    │
+├───────────────────────────────────────────────────────┤
+│  features/eligibility/ components + form validation   │
+├───────────────────────────────────────────────────────┤
+│  hooks/                useEligibility,                │
+│                        useLoanProducts,               │
+│                        useValidationRules             │
+├───────────────────────────────────────────────────────┤
+│  services/loans/       API client + Zod schemas       │
+├───────────────────────────────────────────────────────┤
+│  domain/eligibility/   pure logic, no React, no I/O   │
+└───────────────────────────────────────────────────────┘
+```
+
+### Why each layer exists
+
+- **`domain/eligibility/`** — affordability, interest pricing, amortization,
+  and the orchestrator. Pure functions: given the same input, always the same
+  output. This is what makes the business rules testable without a browser,
+  and it's the layer where a bank's rules would actually live.
+- **`services/loans/`** — the API boundary. Types mirror the contract; Zod
+  schemas validate every response at runtime. A malformed response fails
+  loudly instead of corrupting the UI.
+- **`hooks/`** — where React meets the API. Loading, error, and data state in
+  one place per endpoint. Components don't fetch; they call hooks.
+- **`features/eligibility/`** — the feature's components. They know the domain
+  but not the API's wire format.
+- **`components/ui/`** — design-system primitives. They know nothing about
+  loans and could be lifted into another app unchanged.
+- **`app/`** — the shell. Composes hooks and feature components; holds no
+  logic of its own.
+
+### The mock backend
+
+MSW handlers in `src/test/msw/handlers.ts` call the real domain logic:
+
+```ts
+const result = evaluateEligibility(parsed.data, validationRules);
+return HttpResponse.json(result);
+```
+
+The mocked backend and the frontend's own calculations cannot drift. If the
+domain logic changes, the mock follows automatically — and the mock behaves
+the way a real service would: same inputs, same outputs, same status codes.
+
+### The mock runs inside the Docker image
+
+The project has no real backend, so MSW is bundled into the production build
+and starts unless `VITE_ENABLE_MOCK_API=false` is set at build time. Without
+this, the container would render an empty shell, since every API call would
+fall through nginx's SPA fallback and return HTML.
+
+To point the app at a real backend:
+
+```bash
+docker build --build-arg VITE_ENABLE_MOCK_API=false -t app:real .
+```
+
+In a real pipeline, that flag would be set per environment.
 
 ---
 
@@ -224,106 +280,108 @@ _(to be completed)_
 
 ### Spec deviation: amortization worked example
 
-The API specification's `/calculate-rate` example shows a monthly payment
-of **R7,089.50** for R150,000 at 12.5% over 24 months. Applying the standard
+The API specification's `/calculate-rate` example shows a monthly payment of
+**R7,089.50** for R150,000 at 12.5% over 24 months. Applying the standard
 annuity formula to those same inputs yields **R7,096.10**.
 
-The 6.60 difference appears to be a hand-written artifact in the spec —
+The 6.60 difference appears to be a hand-written artifact in the spec
 matching R7,089.50 would require either a rate of ~12.15% or a term of
 ~24.2 months, both of which contradict the spec's own inputs.
 
 The implementation follows the formula. Tests assert the mathematically
 correct value, and this note records the deviation deliberately rather than
-silently. I'd raise it with the backend team before integrating for real —
-a 6-rand difference per month compounds across a portfolio.
+silently. I'd raise it with the backend team before integrating for real — a
+6-rand difference per month compounds across a portfolio.
 
 ### Validation rules come from the API, not the client
 
 The eligibility engine takes the validation rules as an argument rather than
 hard-coding thresholds. This mirrors the spec's `/validation-rules` endpoint,
-and means a product change (e.g. raising the minimum income) is a data
-change, not a frontend release.
+and means a product change (e.g. raising the minimum income) is a data change,
+not a frontend release.
 
-### Mock backend calls the real domain logic
+### Serviceability, not LTI, gates a term loan
 
-The MSW handlers invoke `evaluateEligibility` directly, so the mocked backend
-and the frontend's own calculations cannot drift. If the domain logic
-changes, the mock follows automatically — and the mock behaves like a real
-Spring service would: same inputs, same outputs.
+The spec's validation-rules endpoint doesn't define a loan-to-income gate. My
+first implementation added one anyway  a 60% ceiling. That was wrong for a
+term loan. A customer earning R25,000 with R24,985 of disposable income was
+declined a R25,000 loan repaid over 12 months, despite the R1,230 instalment
+being comfortably serviceable.
+
+LTI is a rule of thumb for revolving credit, where the balance persists. For
+an amortising term loan, the correct test is whether the instalment fits
+disposable income. The model now gates on:
+
+- **DTI ≤ 40%** : existing debt as a share of income
+- **Disposable after repayment ≥ R1,000** : can they afford the instalment?
+
+LTI remains as a soft signal that lowers the risk score, but does not cause
+an outright decline.
+
+### Product-aware validation
+
+The `/loans/products` endpoint defines per-product term and amount ranges. The
+form enforces them: Vehicle Finance requires a 12-month minimum and its amount
+range starts at R50,000. Without this, a 6-month Vehicle Finance application
+would pass the generic term rule (min 6) while violating the product's own
+minimum.
+
+Term options filter to the selected product's range; the amount and term hints
+show the product's actual limits; changing purpose clears an invalid term; and
+the final submit re-validates both fields against the selected product.
+
+### Response validation at the boundary
+
+Every API response is parsed through a Zod schema before the UI sees it. This
+is not ceremony — it caught a real bug on the first run. The schema assumed
+`debtToIncomeRatio` was bounded at 100, but DTI is a ratio expressed as a
+percentage: an applicant owing 3× their income has a DTI of 300. Capping it
+would have silently hidden exactly the cases the UI most needs to show.
+
+### Zero new runtime dependencies
+
+Plain CSS with custom properties instead of a styling library. A small custom
+hook instead of a query library. The only runtime dependencies are React and
+Zod. This keeps the Docker image small and means every abstraction in the
+codebase is one we chose, not one we inherited.
 
 ---
 
 ## What I'd do with more time
 
+Ordered by impact.
+
+**Correctness**
+
+1. **Error boundary** — a rendering error currently blanks the page. React
+   error boundaries would contain failures to the affected subtree and show a
+   recoverable message.
+2. **Persist form state across reloads** — session storage would restore a
+   partially completed application.
+
+**User experience**
+
+3. **Live affordability preview as the user types the requested amount** —
+   currently the preview only covers income and expenses.
+4. **Sensible defaults** — pre-fill the term with the product's midpoint, the
+   amount with a round number near the income-based ceiling.
+5. **Scroll the result into view on submission** — on mobile the result
+   appears below the fold.
+
+**Engineering**
+
+6. **Playwright E2E tests** — the suite is unit and component level. A handful
+   of end-to-end paths would protect against integration regressions.
+7. **Coverage reporting in CI** — `pnpm test:coverage` exists but isn't wired
+   into the pipeline or gated on a threshold.
+8. **Bundle analysis** — `rollup-plugin-visualizer` in the build.
+9. **i18n and a formatting layer** — currency and locale are hard-coded to
+   `en-ZA` and ZAR.
+
+**Product**
+
+10. **Offer the full product range** — the form offers Vehicle Finance as a
+    purpose, but the underlying rate calculation still defaults to the personal
+    loan product. Wiring the selected product through to `interestRateFor`
+    would complete the picture.
 ````
-
-## You also need to create `.env.example`
-
-```bash
-cat > .env.example <<'EOF'
-# Environment variables for the Loan Eligibility Simulator.
-#
-# Copy this file to `.env` for local development:
-#
-#     cp .env.example .env
-#
-# Vite only exposes variables prefixed with VITE_ to client-side code.
-
-# Base URL the API client fetches from. In dev and test, MSW intercepts
-# requests to this path, so it doesn't need to resolve to a real server.
-VITE_API_BASE_URL=/api
-
-# When 'true', MSW starts and serves the mocked API. Set to 'false' to
-# point the app at a real backend instead.
-#
-# In Docker, this is passed as a build arg rather than read from .env,
-# because Vite bakes env vars into the bundle at build time:
-#
-#     docker build --build-arg VITE_ENABLE_MOCK_API=false -t app:real .
-VITE_ENABLE_MOCK_API=true
-EOF
-````
-
-The quoted `'EOF'` matters on Git Bash — it stops the shell from expanding `$` characters, which would silently corrupt the file.
-
-## Confirm `.env` is gitignored
-
-```bash
-git check-ignore -v .env
-```
-
-Should print a rule. If it doesn't, add this to `.gitignore`:
-
-```gitignore
-# Environment files
-.env
-.env.*
-!.env.example
-```
-
-The `!.env.example` line un-ignores the example file so it _is_ committed. That's the whole point — the example documents what the app expects, without leaking values.
-
-## What changed in the README
-
-- **New "Environment variables" section** between Install and Run locally, with the `cp .env.example .env` instruction, a table of the two variables, and a note about the `VITE_` prefix
-- **Docker section** now shows the `--build-arg VITE_ENABLE_MOCK_API=false` form for pointing at a real backend
-- **Project structure** includes `.env.example` and fixes the mangled box-drawing characters from the earlier encoding issue
-- **ToC** updated with the new Environment variables entry
-
-## Verify
-
-```bash
-pnpm verify
-```
-
-Then confirm a fresh clone would work:
-
-```bash
-# Simulate a fresh clone in a temp directory
-cd /tmp
-git clone <your-repo-url> test-clone
-cd test-clone
-cp .env.example .env
-pnpm install
-pnpm verify
-```
