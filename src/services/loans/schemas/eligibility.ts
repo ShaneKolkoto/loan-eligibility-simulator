@@ -52,8 +52,11 @@ export const recommendedLoanSchema = z.object({
 
 export const affordabilityAnalysisSchema = z.object({
   disposableIncome: z.number(),
-  debtToIncomeRatio: z.number().min(0).max(100),
-  loanToIncomeRatio: z.number().min(0).max(100),
+  // DTI and LTI are ratios expressed as percentages, but neither is bounded
+  // at 100 — an applicant owing 3× their income has a DTI of 300. Capping
+  // these would reject legitimate (if undesirable) responses.
+  debtToIncomeRatio: z.number().nonnegative(),
+  loanToIncomeRatio: z.number().nonnegative(),
   affordabilityScore: affordabilityScoreSchema,
 });
 

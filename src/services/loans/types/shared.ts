@@ -6,8 +6,8 @@ export type LoanPurpose =
   | 'education'
   | 'medical'
   | 'other'
-  | 'new_vehicle'
-  | 'used_vehicle';
+  | 'new_vehicle' // ← never offered in the UI
+  | 'used_vehicle'; // ← never offered in the UI
 
 export type RiskCategory = 'low' | 'medium' | 'high';
 

@@ -9,16 +9,29 @@ import {
   LIKELIHOOD_MAX,
   LIKELIHOOD_MIN,
   LIKELIHOOD_WEIGHTS,
+  MAX_DTI,
+  MAX_LTI,
+  MIN_DISPOSABLE_AFTER_REPAYMENT,
   MONEY_DP,
   RISK_BANDS,
 } from './constants';
 
 /**
+ * Currency formatter for decision-reason strings. Kept module-level so it's
+ * constructed once rather than per evaluation.
+ */
+const CURRENCY_DISPLAY = new Intl.NumberFormat('en-ZA', {
+  style: 'currency',
+  currency: 'ZAR',
+  maximumFractionDigits: 2,
+});
+
+/**
  * Evaluate a loan application end-to-end.
  *
- * Orchestrates: rule checks → affordability → pricing → likelihood → risk.
- * The MSW handler calls exactly this function, so the mocked backend and
- * the real domain logic can never drift.
+ * Orchestrates: rule checks → affordability → gates → pricing → likelihood
+ * → risk. The MSW handler calls exactly this function, so the mocked backend
+ * and the real domain logic can never drift.
  *
  * Pure. No I/O, no globals, no randomness.
  */
@@ -37,6 +50,14 @@ export function evaluateEligibility(
     requestedAmount: loanDetails.requestedAmount,
   });
 
+  // Gate 1 — DTI. Is the applicant already over-committed relative to
+  // their income? This is the standard first test in retail lending.
+  if (affordability.debtToIncomeRatio > MAX_DTI) {
+    failures.push(
+      `Debt-to-income ratio of ${affordability.debtToIncomeRatio.toFixed(1)}% exceeds the maximum of ${MAX_DTI}%`,
+    );
+  }
+
   const interestRate = interestRateFor(financialInfo.creditScore, 'personal_loan');
   const amort = amortize({
     principal: loanDetails.requestedAmount,
@@ -44,28 +65,37 @@ export function evaluateEligibility(
     termMonths: loanDetails.loanTerm,
   });
 
-  // Serviceability informs likelihood, not eligibility. The spec's example
-  // applicant passes the ratio checks but cannot fully cover the repayment,
-  // and the spec still calls them eligible.
+  // Disposable income after the new monthly repayment. If this is negative
+  // the applicant cannot service the loan at all.
   const disposableAfterRepayment = round(
     affordability.disposableIncome - amort.monthlyPayment,
     MONEY_DP,
   );
+
+  // Gate 2 — serviceability. Can the applicant afford the instalment on top
+  // of their existing commitments? This is the correct test for a term loan.
+  // LTI is deliberately not a gate here: a loan can be large relative to
+  // income yet still comfortably serviceable over a fixed term.
+  if (disposableAfterRepayment < MIN_DISPOSABLE_AFTER_REPAYMENT) {
+    failures.push(
+      `Disposable income after repayment of ${CURRENCY_DISPLAY.format(disposableAfterRepayment)} is below the minimum of ${CURRENCY_DISPLAY.format(MIN_DISPOSABLE_AFTER_REPAYMENT)}`,
+    );
+  }
 
   const isEligible = failures.length === 0;
 
   const approvalLikelihood = computeApprovalLikelihood({
     isEligible,
     dti: affordability.debtToIncomeRatio,
+    lti: affordability.loanToIncomeRatio,
     creditScore: financialInfo.creditScore,
     disposableAfterRepayment,
   });
   const riskCategory = riskCategoryFor(approvalLikelihood);
 
-  const maxAmount = round(
-    Math.min(loanDetails.requestedAmount, financialInfo.monthlyIncome * 60),
-    MONEY_DP,
-  );
+  // With serviceability as the gate, the maximum we'd offer is what they
+  // asked for. There is no separate LTI ceiling to compute against.
+  const maxAmount = round(loanDetails.requestedAmount, MONEY_DP);
 
   return {
     eligibilityResult: {
@@ -138,12 +168,13 @@ function collectRuleFailures(
 interface LikelihoodInput {
   isEligible: boolean;
   dti: number;
+  lti: number;
   creditScore: number;
   disposableAfterRepayment: number;
 }
 
 function computeApprovalLikelihood(input: LikelihoodInput): number {
-  const { isEligible, dti, creditScore, disposableAfterRepayment } = input;
+  const { isEligible, dti, lti, creditScore, disposableAfterRepayment } = input;
   const w = LIKELIHOOD_WEIGHTS;
 
   if (!isEligible) {
@@ -156,6 +187,9 @@ function computeApprovalLikelihood(input: LikelihoodInput): number {
   if (dti <= 20) score += w.lowDti;
   if (Number.isFinite(creditScore) && creditScore >= 650) score += w.strongCredit;
   if (!Number.isFinite(creditScore)) score -= w.missingCredit;
+  // LTI above the soft threshold lowers the score but does not block the
+  // application. A large loan relative to income warrants more scrutiny.
+  if (lti > MAX_LTI) score -= w.excessiveLti;
 
   return clamp(score, LIKELIHOOD_MIN, LIKELIHOOD_MAX);
 }
