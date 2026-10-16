@@ -15,11 +15,29 @@ import type { AffordabilityScore } from '@/services/loans/types/shared';
 /** Maximum debt-to-income ratio, as a percentage. */
 export const MAX_DTI = 40;
 
-/** Maximum loan-to-income ratio, as a percentage. */
+/** Maximum loan-to-income ratio, as a percentage. Used as a soft signal. */
 export const MAX_LTI = 60;
 
 /** Minimum disposable income after repayment, in Rand. */
 export const MIN_DISPOSABLE_AFTER_REPAYMENT = 1_000;
+
+// ---------------------------------------------------------------------------
+// Credit policy
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum credit score for eligibility. Below this, the application is
+ * declined regardless of affordability — a very low score is a decline,
+ * not merely expensive pricing.
+ *
+ * 550 is a common public benchmark for "below average" credit. Real retail
+ * lenders set their own threshold; this one is a reasonable approximation.
+ *
+ * A missing score (NaN) is not a decline. It's treated as "unverified",
+ * priced at the worst band, and flagged in the decision reason. That's a
+ * different situation from a verified low score.
+ */
+export const MIN_CREDIT_SCORE = 550;
 
 // ---------------------------------------------------------------------------
 // Affordability scoring
@@ -82,7 +100,7 @@ export const RATE_BANDS: readonly RateBand[] = [
 /**
  * Premium applied when no credit score is supplied.
  * Matches the 300–499 band so a missing score is priced identically to the
- * worst valid score. A missing score can never improve an applicant's rate.
+ * worst valid score.
  */
 export const MISSING_CREDIT_SCORE_PREMIUM = 8.0;
 

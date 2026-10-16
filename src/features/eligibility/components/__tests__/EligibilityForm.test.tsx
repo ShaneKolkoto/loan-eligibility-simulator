@@ -79,8 +79,9 @@ const products: LoanProduct[] = [
 
 async function completeStep1() {
   await userEvent.type(screen.getByLabelText(/age/i), '35');
-  await userEvent.click(screen.getByLabelText(/^employed$/i));
-  await userEvent.type(screen.getByLabelText(/months in current employment/i), '24');
+  await userEvent.click(screen.getByRole('radio', { name: /^employed$/i }));
+  await userEvent.type(screen.getByLabelText(/years in current employment/i), '2');
+  await userEvent.type(screen.getByRole('spinbutton', { name: /^months$/i }), '0');
 }
 
 async function completeStep2() {
@@ -93,12 +94,7 @@ async function completeStep2() {
 describe('EligibilityForm stepper', () => {
   it('starts on the first step and hides later fields', () => {
     render(
-      <EligibilityForm
-        rules={rules}
-        products={products}
-        isSubmitting={false}
-        onSubmit={vi.fn()}
-      />,
+      <EligibilityForm rules={rules} products={products} isSubmitting={false} onSubmit={vi.fn()} />,
     );
     expect(screen.getByLabelText(/age/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/monthly income/i)).not.toBeInTheDocument();
@@ -106,12 +102,7 @@ describe('EligibilityForm stepper', () => {
 
   it('does not advance past an invalid step', async () => {
     render(
-      <EligibilityForm
-        rules={rules}
-        products={products}
-        isSubmitting={false}
-        onSubmit={vi.fn()}
-      />,
+      <EligibilityForm rules={rules} products={products} isSubmitting={false} onSubmit={vi.fn()} />,
     );
 
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
@@ -122,12 +113,7 @@ describe('EligibilityForm stepper', () => {
 
   it('advances to step 2 once step 1 is valid', async () => {
     render(
-      <EligibilityForm
-        rules={rules}
-        products={products}
-        isSubmitting={false}
-        onSubmit={vi.fn()}
-      />,
+      <EligibilityForm rules={rules} products={products} isSubmitting={false} onSubmit={vi.fn()} />,
     );
 
     await completeStep1();
@@ -139,12 +125,7 @@ describe('EligibilityForm stepper', () => {
 
   it('preserves values when going back', async () => {
     render(
-      <EligibilityForm
-        rules={rules}
-        products={products}
-        isSubmitting={false}
-        onSubmit={vi.fn()}
-      />,
+      <EligibilityForm rules={rules} products={products} isSubmitting={false} onSubmit={vi.fn()} />,
     );
 
     await completeStep1();
@@ -170,9 +151,9 @@ describe('EligibilityForm stepper', () => {
     await completeStep2();
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    await userEvent.click(screen.getByLabelText(/home improvement/i));
+    await userEvent.click(screen.getByRole('radio', { name: /home improvement/i }));
     await userEvent.type(screen.getByLabelText(/requested amount/i), '10000');
-    await userEvent.click(screen.getByLabelText(/24 months/i));
+    await userEvent.click(screen.getByRole('radio', { name: /24 months/i }));
     await userEvent.click(screen.getByRole('button', { name: /check eligibility/i }));
 
     expect(onSubmit).toHaveBeenCalledOnce();
@@ -185,12 +166,7 @@ describe('EligibilityForm stepper', () => {
 
   it('shows a live disposable-income preview on step 2', async () => {
     render(
-      <EligibilityForm
-        rules={rules}
-        products={products}
-        isSubmitting={false}
-        onSubmit={vi.fn()}
-      />,
+      <EligibilityForm rules={rules} products={products} isSubmitting={false} onSubmit={vi.fn()} />,
     );
 
     await completeStep1();
@@ -204,12 +180,7 @@ describe('EligibilityForm stepper', () => {
 
   it('hides the 6-month term when Vehicle Finance is selected', async () => {
     render(
-      <EligibilityForm
-        rules={rules}
-        products={products}
-        isSubmitting={false}
-        onSubmit={vi.fn()}
-      />,
+      <EligibilityForm rules={rules} products={products} isSubmitting={false} onSubmit={vi.fn()} />,
     );
 
     await completeStep1();
@@ -217,9 +188,9 @@ describe('EligibilityForm stepper', () => {
     await completeStep2();
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
 
-    await userEvent.click(screen.getByLabelText(/vehicle finance/i));
+    await userEvent.click(screen.getByRole('radio', { name: /vehicle finance/i }));
 
-    expect(screen.queryByLabelText(/^6 months$/i)).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/12 months/i)).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /^6 months$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /12 months/i })).toBeInTheDocument();
   });
 });

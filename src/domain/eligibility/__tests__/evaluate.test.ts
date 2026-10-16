@@ -120,6 +120,10 @@ describe('evaluateEligibility', () => {
     // The R25,000 loan is 100% of monthly income, well above the 60% soft
     // threshold — but R24,985 of disposable income easily covers the
     // R1,230 instalment. Serviceability, not LTI, gates a term loan.
+    //
+    // creditScore is 600, above the 550 minimum, so the LTI/serviceability
+    // behaviour is isolated. A lower score would fail on the credit gate
+    // before the serviceability check ran.
     const result = evaluateEligibility(
       {
         ...baseRequest,
@@ -127,7 +131,7 @@ describe('evaluateEligibility', () => {
           monthlyIncome: 25_000,
           monthlyExpenses: 15,
           existingDebt: 0,
-          creditScore: 500,
+          creditScore: 600,
         },
         loanDetails: {
           requestedAmount: 25_000,
@@ -173,8 +177,8 @@ describe('evaluateEligibility', () => {
         ...baseRequest,
         personalInfo: {
           ...baseRequest.personalInfo,
-          employmentStatus: 'unemployed',
-          employmentDuration: 3,
+          employmentStatus: 'employed',
+          employmentDuration: 24,
         },
         financialInfo: {
           monthlyIncome: 15_000,
@@ -189,6 +193,51 @@ describe('evaluateEligibility', () => {
 
     expect(result.eligibilityResult.isEligible).toBe(false);
     expect(result.eligibilityResult.decisionReason).toMatch(/debt-to-income/i);
+  });
+
+  it('rejects an unemployed applicant with a clear reason', () => {
+    const result = evaluateEligibility(
+      {
+        ...baseRequest,
+        personalInfo: {
+          ...baseRequest.personalInfo,
+          employmentStatus: 'unemployed',
+          employmentDuration: 0,
+        },
+      },
+      rules,
+    );
+
+    expect(result.eligibilityResult.isEligible).toBe(false);
+    expect(result.eligibilityResult.decisionReason).toMatch(/unemployed/i);
+  });
+
+  it('does not enforce employment duration for a retiree', () => {
+    const result = evaluateEligibility(
+      {
+        ...baseRequest,
+        personalInfo: {
+          ...baseRequest.personalInfo,
+          employmentStatus: 'retired',
+          employmentDuration: 0,
+        },
+        financialInfo: {
+          monthlyIncome: 25_000,
+          monthlyExpenses: 8_000,
+          existingDebt: 2_000,
+          creditScore: 700,
+        },
+        loanDetails: {
+          requestedAmount: 10_000,
+          loanTerm: 24,
+          loanPurpose: 'home_improvement',
+        },
+      },
+      rules,
+    );
+
+    expect(result.eligibilityResult.decisionReason).not.toMatch(/employment duration/i);
+    expect(result.eligibilityResult.isEligible).toBe(true);
   });
 
   it('rejects applicants below the minimum income', () => {
@@ -226,6 +275,7 @@ describe('evaluateEligibility', () => {
     );
 
     expect(result.eligibilityResult.isEligible).toBe(false);
+    expect(result.eligibilityResult.decisionReason).toMatch(/3 months/i);
   });
 
   it('flags a missing credit score in the decision reason', () => {
@@ -238,6 +288,49 @@ describe('evaluateEligibility', () => {
       rules,
     );
 
+    expect(result.eligibilityResult.decisionReason).toMatch(/credit/i);
+  });
+
+  it('declines an applicant whose credit score is below the minimum', () => {
+    const result = evaluateEligibility(
+      {
+        ...baseRequest,
+        financialInfo: {
+          ...baseRequest.financialInfo,
+          creditScore: 412,
+        },
+        loanDetails: {
+          requestedAmount: 5_000,
+          loanTerm: 6,
+          loanPurpose: 'other',
+        },
+      },
+      rules,
+    );
+
+    expect(result.eligibilityResult.isEligible).toBe(false);
+    expect(result.eligibilityResult.decisionReason).toMatch(/credit score/i);
+  });
+
+  it('approves an applicant with a missing credit score, priced at the worst band', () => {
+    const result = evaluateEligibility(
+      {
+        ...baseRequest,
+        financialInfo: {
+          ...baseRequest.financialInfo,
+          creditScore: Number.NaN,
+        },
+        loanDetails: {
+          requestedAmount: 10_000,
+          loanTerm: 24,
+          loanPurpose: 'home_improvement',
+        },
+      },
+      rules,
+    );
+
+    // Missing score is not a decline — it's flagged and priced at the top band.
+    expect(result.eligibilityResult.isEligible).toBe(true);
     expect(result.eligibilityResult.decisionReason).toMatch(/credit/i);
   });
 });
