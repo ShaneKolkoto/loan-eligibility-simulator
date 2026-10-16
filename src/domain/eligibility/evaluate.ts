@@ -11,6 +11,7 @@ import {
   LIKELIHOOD_WEIGHTS,
   MAX_DTI,
   MAX_LTI,
+  MIN_CREDIT_SCORE,
   MIN_DISPOSABLE_AFTER_REPAYMENT,
   MONEY_DP,
   RISK_BANDS,
@@ -58,6 +59,16 @@ export function evaluateEligibility(
     );
   }
 
+  // Gate 2 — credit score. A very low score is a decline, not merely
+  // expensive pricing. A missing score (NaN) is not a decline; it's priced
+  // at the worst band and flagged in the decision reason. That's a
+  // different situation from a verified low score.
+  if (Number.isFinite(financialInfo.creditScore) && financialInfo.creditScore < MIN_CREDIT_SCORE) {
+    failures.push(
+      `Credit score of ${financialInfo.creditScore} is below the minimum of ${MIN_CREDIT_SCORE}`,
+    );
+  }
+
   const interestRate = interestRateFor(financialInfo.creditScore, 'personal_loan');
   const amort = amortize({
     principal: loanDetails.requestedAmount,
@@ -72,7 +83,7 @@ export function evaluateEligibility(
     MONEY_DP,
   );
 
-  // Gate 2 — serviceability. Can the applicant afford the instalment on top
+  // Gate 3 — serviceability. Can the applicant afford the instalment on top
   // of their existing commitments? This is the correct test for a term loan.
   // LTI is deliberately not a gate here: a loan can be large relative to
   // income yet still comfortably serviceable over a fixed term.
@@ -136,7 +147,26 @@ function collectRuleFailures(
     failures.push(rules.personalInfo.age.errorMessage);
   }
 
-  if (personalInfo.employmentDuration < rules.personalInfo.employmentDuration.min) {
+  // Employment rules are per status. The API's validation rules define a
+  // single minimum duration without regard to status; applied literally,
+  // that rejects a retiree who retired last month and accepts a long-term
+  // unemployed applicant.
+  //
+  // - Employed / self-employed: minimum months in current employment.
+  // - Retired: no duration requirement. Pension and investment income
+  //   count as qualifying income; the retirement duration tells us nothing
+  //   about creditworthiness.
+  // - Unemployed: rejected. There is no income to service a loan.
+  const isWorking =
+    personalInfo.employmentStatus === 'employed' ||
+    personalInfo.employmentStatus === 'self_employed';
+
+  if (personalInfo.employmentStatus === 'unemployed') {
+    failures.push('Unemployed applicants are not eligible — there is no income to service a loan.');
+  } else if (
+    isWorking &&
+    personalInfo.employmentDuration < rules.personalInfo.employmentDuration.min
+  ) {
     failures.push(rules.personalInfo.employmentDuration.errorMessage);
   }
 

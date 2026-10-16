@@ -60,8 +60,10 @@ breakdown of the reasoning.
 │   ├── test/                  # test setup, MSW server + handlers
 │   ├── index.css              # design tokens
 │   └── main.tsx
+├── e2e/                       # Playwright end-to-end tests
 ├── Dockerfile                 # multi-stage production image
 ├── nginx.conf                 # SPA fallback + caching
+├── playwright.config.ts       # E2E test runner config
 ├── .dockerignore
 ├── .nvmrc                     # Node version
 ├── .env.example               # environment variable reference
@@ -197,6 +199,9 @@ concentrated where the risk is:
 `Card` and `Spinner` are deliberately untested — no branching, covered
 indirectly by every feature test that uses them.
 
+End-to-end tests live in `e2e/` and run against a real browser. Playwright
+starts the dev server automatically.
+
 Run the suite:
 
 ```bash
@@ -205,6 +210,11 @@ pnpm test:watch    # watch mode
 pnpm test:coverage # with coverage
 pnpm e2e           # Playwright
 ```
+
+> **Domain-test deviations from the spec** are documented in
+> [`src/domain/eligibility/__tests__/README.md`](src/domain/eligibility/__tests__/README.md).
+> That file lists every rule the domain adds beyond the API contract, and
+> why each one exists.
 
 ---
 
@@ -278,20 +288,34 @@ In a real pipeline, that flag would be set per environment.
 
 ## Decisions & trade-offs
 
+The domain implements the API's field-level rules faithfully, then adds
+several business rules the spec doesn't define. Each addition is documented
+in [`src/domain/eligibility/__tests__/README.md`](src/domain/eligibility/__tests__/README.md),
+alongside the tests that verify it.
+
+The short version of what the domain adds beyond the API contract:
+
+- **Credit policy gates** — DTI ≤ 40%, disposable-after-repayment ≥ R1,000,
+  minimum credit score of 550. Without these, an applicant with a 666,667%
+  debt-to-income ratio and zero disposable income would pass every rule.
+- **Per-status employment rules** — employed and self-employed need the
+  minimum tenure; retirees are assessed on income; unemployed applicants are
+  declined.
+- **Product-aware validation** — enforced in the form layer, using the
+  `/loans/products` endpoint.
+
+The decisions below are the ones that shaped the frontend's behaviour
+specifically.
+
 ### Spec deviation: amortization worked example
 
 The API specification's `/calculate-rate` example shows a monthly payment of
 **R7,089.50** for R150,000 at 12.5% over 24 months. Applying the standard
 annuity formula to those same inputs yields **R7,096.10**.
 
-The 6.60 difference appears to be a hand-written artifact in the spec
-matching R7,089.50 would require either a rate of ~12.15% or a term of
-~24.2 months, both of which contradict the spec's own inputs.
-
 The implementation follows the formula. Tests assert the mathematically
-correct value, and this note records the deviation deliberately rather than
-silently. I'd raise it with the backend team before integrating for real — a
-6-rand difference per month compounds across a portfolio.
+correct value. Full reasoning in the
+[test README](src/domain/eligibility/__tests__/README.md).
 
 ### Validation rules come from the API, not the client
 
@@ -299,36 +323,6 @@ The eligibility engine takes the validation rules as an argument rather than
 hard-coding thresholds. This mirrors the spec's `/validation-rules` endpoint,
 and means a product change (e.g. raising the minimum income) is a data change,
 not a frontend release.
-
-### Serviceability, not LTI, gates a term loan
-
-The spec's validation-rules endpoint doesn't define a loan-to-income gate. My
-first implementation added one anyway  a 60% ceiling. That was wrong for a
-term loan. A customer earning R25,000 with R24,985 of disposable income was
-declined a R25,000 loan repaid over 12 months, despite the R1,230 instalment
-being comfortably serviceable.
-
-LTI is a rule of thumb for revolving credit, where the balance persists. For
-an amortising term loan, the correct test is whether the instalment fits
-disposable income. The model now gates on:
-
-- **DTI ≤ 40%** : existing debt as a share of income
-- **Disposable after repayment ≥ R1,000** : can they afford the instalment?
-
-LTI remains as a soft signal that lowers the risk score, but does not cause
-an outright decline.
-
-### Product-aware validation
-
-The `/loans/products` endpoint defines per-product term and amount ranges. The
-form enforces them: Vehicle Finance requires a 12-month minimum and its amount
-range starts at R50,000. Without this, a 6-month Vehicle Finance application
-would pass the generic term rule (min 6) while violating the product's own
-minimum.
-
-Term options filter to the selected product's range; the amount and term hints
-show the product's actual limits; changing purpose clears an invalid term; and
-the final submit re-validates both fields against the selected product.
 
 ### Response validation at the boundary
 
@@ -370,8 +364,9 @@ Ordered by impact.
 
 **Engineering**
 
-6. **Playwright E2E tests** — the suite is unit and component level. A handful
-   of end-to-end paths would protect against integration regressions.
+6. **Extend Playwright E2E coverage** — the suite has happy-path and
+   validation tests. Error recovery, product switching, and the retiree path
+   would round it out.
 7. **Coverage reporting in CI** — `pnpm test:coverage` exists but isn't wired
    into the pipeline or gated on a threshold.
 8. **Bundle analysis** — `rollup-plugin-visualizer` in the build.
@@ -384,3 +379,10 @@ Ordered by impact.
     purpose, but the underlying rate calculation still defaults to the personal
     loan product. Wiring the selected product through to `interestRateFor`
     would complete the picture.
+11. **Repayment-age ceiling** — South African lenders generally require a
+    term loan to be repaid by a specific age, often 65 to 75 depending on the
+    product. The model enforces an age gate (18–65) but no repayment-age
+    ceiling, so a 64-year-old could select a 60-month term ending at 69. A
+    real implementation would cap the available terms at
+    `MAX_REPAYMENT_AGE − age`, and the product's `maxTerm` would be the
+    tighter of the two.

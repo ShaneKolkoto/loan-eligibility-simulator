@@ -5,8 +5,7 @@
 }
 
 .stepBody {
-  /* Placeholder for any per-step transition in future. Kept as a named
-     element so the stepper and the step content are visually separate. */
+  /* Named wrapper so the stepper and the step content are visually separate. */
 }
 
 .section {
@@ -25,30 +24,24 @@
   color: var(--color-text-muted);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+/* Two-column row for years + months in employment duration. */
+.durationRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
 }
 
-.label {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+@media (max-width: 480px) {
+  .durationRow {
+    grid-template-columns: 1fr;
+  }
 }
 
-.select {
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  font-size: var(--text-base);
-}
-
-.select:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: var(--focus-ring);
+.durationHint {
+  margin-top: calc(var(--space-2) * -1);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .preview {

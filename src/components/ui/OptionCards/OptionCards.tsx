@@ -42,8 +42,9 @@ export function OptionCards<T extends string>({
           const isSelected = value === option.value;
 
           return (
-            <div
+            <label
               key={option.value}
+              htmlFor={optionId}
               className={`${styles.cell} ${isSelected ? styles.cellSelected : ''}`}
             >
               <input
@@ -56,11 +57,9 @@ export function OptionCards<T extends string>({
                 className={styles.input}
                 aria-describedby={option.description ? descId : undefined}
               />
-              <label htmlFor={optionId} className={styles.card}>
-                <span className={styles.cardLabel}>{option.label}</span>
-              </label>
+              <span className={styles.cardLabel}>{option.label}</span>
               {option.description ? (
-                <span id={descId} className={styles.cardDescription}>
+                <span id={descId} className={styles.cardDescription} aria-hidden="true">
                   {option.description}
                 </span>
               ) : null}
@@ -69,7 +68,7 @@ export function OptionCards<T extends string>({
                   ✓
                 </span>
               ) : null}
-            </div>
+            </label>
           );
         })}
       </div>

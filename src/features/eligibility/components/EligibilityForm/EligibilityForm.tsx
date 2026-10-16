@@ -34,7 +34,7 @@ const EMPLOYMENT_OPTIONS = [
   { value: 'employed', label: 'Employed', description: 'Full-time or part-time' },
   { value: 'self_employed', label: 'Self-employed', description: 'Own business or freelance' },
   { value: 'unemployed', label: 'Unemployed', description: 'Not currently working' },
-  { value: 'retired', label: 'Retired', description: 'No longer working' },
+  { value: 'retired', label: 'Retired', description: 'Drawing a pension' },
 ] as const;
 
 const PURPOSE_OPTIONS = [
@@ -61,12 +61,7 @@ const CURRENCY = new Intl.NumberFormat('en-ZA', {
   maximumFractionDigits: 0,
 });
 
-export function EligibilityForm({
-  rules,
-  products,
-  isSubmitting,
-  onSubmit,
-}: EligibilityFormProps) {
+export function EligibilityForm({ rules, products, isSubmitting, onSubmit }: EligibilityFormProps) {
   const [values, setValues] = useState<FormValues>(emptyForm);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -75,15 +70,11 @@ export function EligibilityForm({
   const currentStepId = STEP_IDS[currentIndex] ?? 'about-you';
   const isLastStep = currentIndex === STEP_IDS.length - 1;
 
-  // The product that serves the currently selected purpose, if any. Drives
-  // the term and amount ranges shown on the loan step.
   const selectedProduct = useMemo(() => {
     if (!values.loanPurpose) return null;
     return products.find((p) => p.purposes.includes(values.loanPurpose as LoanPurpose)) ?? null;
   }, [products, values.loanPurpose]);
 
-  // Term options filtered to the selected product's range. Vehicle finance,
-  // for example, requires a minimum of 12 months; personal loans allow 6.
   const termOptions = useMemo(() => {
     if (!selectedProduct) return TERM_OPTIONS;
     return TERM_OPTIONS.filter(
@@ -100,14 +91,18 @@ export function EligibilityForm({
     return income - expenses - debt;
   }, [values.monthlyIncome, values.monthlyExpenses, values.existingDebt]);
 
+  // Employment duration is only relevant to applicants who are working.
+  // Retirees draw pension income and are assessed on income; unemployed
+  // applicants are rejected on the absence of income. So the field is shown
+  // for employed and self-employed only.
+  const isWorking =
+    values.employmentStatus === 'employed' || values.employmentStatus === 'self_employed';
+  const isRetired = values.employmentStatus === 'retired';
+
   function update(field: keyof FormValues, value: string) {
     setValues((prev) => {
       const next = { ...prev, [field]: value };
 
-      // If the purpose changed and the currently selected term is no longer
-      // valid for the newly selected product, clear it so the user is
-      // forced to re-select. This prevents a stale value from passing
-      // validation under the wrong product's rules.
       if (field === 'loanPurpose') {
         const product = products.find((p) => p.purposes.includes(value as LoanPurpose));
         if (product && next.loanTerm !== '') {
@@ -116,6 +111,14 @@ export function EligibilityForm({
             next.loanTerm = '';
           }
         }
+      }
+
+      // If the applicant switches away from a working status, clear the
+      // employment duration so it doesn't get submitted or carry into a
+      // later re-selection.
+      if (field === 'employmentStatus' && value !== 'employed' && value !== 'self_employed') {
+        next.employmentYears = '';
+        next.employmentMonths = '';
       }
 
       return next;
@@ -133,9 +136,6 @@ export function EligibilityForm({
   function validateCurrentStep(): boolean {
     const stepErrors = { ...validateStep(currentStepId, values, rules) };
 
-    // Product-specific constraints the generic rules can't express — for
-    // example, Vehicle Finance requires a minimum term of 12 months and a
-    // minimum amount of R50,000, where the generic rules allow 6 and R5,000.
     if (currentStepId === 'loan' && selectedProduct) {
       const term = Number(values.loanTerm);
       if (values.loanTerm !== '' && Number.isFinite(term)) {
@@ -193,8 +193,6 @@ export function EligibilityForm({
 
     const allErrors = validateForm(values, rules);
 
-    // Re-apply product-specific constraints on final submit, since the user
-    // may have gone back and changed the purpose after passing the loan step.
     if (selectedProduct) {
       const term = Number(values.loanTerm);
       if (values.loanTerm !== '' && Number.isFinite(term)) {
@@ -227,6 +225,7 @@ export function EligibilityForm({
     onSubmit(toRequest(values));
   }
 
+  console.log('[render]', { currentStepId, errors, values });
   return (
     <form onSubmit={handleSubmit} noValidate className={styles.form}>
       <Stepper
@@ -262,17 +261,44 @@ export function EligibilityForm({
               error={errors.employmentStatus}
             />
 
-            <Input
-              label="Months in current employment"
-              type="number"
-              inputMode="numeric"
-              autoComplete="off"
-              min={rules.personalInfo.employmentDuration.min}
-              hint={`Minimum ${rules.personalInfo.employmentDuration.min} months`}
-              value={values.employmentDuration}
-              onChange={(e) => update('employmentDuration', e.target.value)}
-              error={errors.employmentDuration}
-            />
+            {isWorking ? (
+              <>
+                <div className={styles.durationRow}>
+                  <Input
+                    label="Years in current employment"
+                    type="number"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    hint=" "
+                    min={0}
+                    value={values.employmentYears}
+                    onChange={(e) => update('employmentYears', e.target.value)}
+                    error={errors.employmentYears}
+                  />
+                  <Input
+                    label="Months"
+                    type="number"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    min={0}
+                    max={11}
+                    value={values.employmentMonths}
+                    onChange={(e) => update('employmentMonths', e.target.value)}
+                    error={errors.employmentMonths}
+                  />
+                </div>
+                <p className={styles.durationHint}>
+                  Minimum {rules.personalInfo.employmentDuration.min} months total.
+                </p>
+              </>
+            ) : null}
+
+            {isRetired ? (
+              <Alert tone="info" role="status">
+                Pension and investment income count as qualifying income. Please enter your monthly
+                income on the next step.
+              </Alert>
+            ) : null}
           </fieldset>
         ) : null}
 
@@ -287,7 +313,11 @@ export function EligibilityForm({
               autoComplete="off"
               min={rules.financialInfo.monthlyIncome.min}
               prefix="R"
-              hint={`Minimum ${CURRENCY.format(rules.financialInfo.monthlyIncome.min)}`}
+              hint={
+                isRetired
+                  ? `Pension or investment income. Minimum ${CURRENCY.format(rules.financialInfo.monthlyIncome.min)}`
+                  : `Minimum ${CURRENCY.format(rules.financialInfo.monthlyIncome.min)}`
+              }
               value={values.monthlyIncome}
               onChange={(e) => update('monthlyIncome', e.target.value)}
               error={errors.monthlyIncome}
@@ -323,9 +353,7 @@ export function EligibilityForm({
                 aria-live="polite"
               >
                 <span className={styles.previewLabel}>Disposable income</span>
-                <span className={styles.previewValue}>
-                  {CURRENCY.format(disposablePreview)}
-                </span>
+                <span className={styles.previewValue}>{CURRENCY.format(disposablePreview)}</span>
               </div>
             ) : null}
 
@@ -428,7 +456,12 @@ export function EligibilityForm({
 function isFieldInStep(field: keyof FormValues, stepId: StepId): boolean {
   switch (stepId) {
     case 'about-you':
-      return field === 'age' || field === 'employmentStatus' || field === 'employmentDuration';
+      return (
+        field === 'age' ||
+        field === 'employmentStatus' ||
+        field === 'employmentYears' ||
+        field === 'employmentMonths'
+      );
     case 'finances':
       return (
         field === 'monthlyIncome' ||

@@ -5,11 +5,15 @@ export type FieldErrors = Partial<Record<string, string>>;
 /**
  * The form's shape. Everything is a string because that's what an
  * `<input>` gives you; we coerce to numbers at submit time.
+ *
+ * Employment duration is split into years and months, matching how people
+ * describe tenure. The two are combined into total months at request time.
  */
 export interface FormValues {
   age: string;
   employmentStatus: string;
-  employmentDuration: string;
+  employmentYears: string;
+  employmentMonths: string;
   monthlyIncome: string;
   monthlyExpenses: string;
   existingDebt: string;
@@ -22,7 +26,8 @@ export interface FormValues {
 export const emptyForm: FormValues = {
   age: '',
   employmentStatus: '',
-  employmentDuration: '',
+  employmentYears: '',
+  employmentMonths: '',
   monthlyIncome: '',
   monthlyExpenses: '',
   existingDebt: '',
@@ -35,9 +40,17 @@ export const emptyForm: FormValues = {
 /**
  * Validate the form against the API-supplied rules.
  *
+ * Employment duration is validated per status:
+ *
+ * - Employed / self-employed: minimum months in current employment, from
+ *   the API's validation rules.
+ * - Retired: no duration requirement. Pension and investment income count
+ *   as qualifying income; the retirement duration tells us nothing about
+ *   creditworthiness.
+ * - Unemployed: rejected. There is no income to service a loan, and the
+ *   duration field is not the deciding factor.
+ *
  * Returns a map of field → error message. An empty object means valid.
- * All fields are checked; nothing short-circuits, so the user sees every
- * problem at once rather than one at a time.
  */
 export function validateForm(values: FormValues, rules: ValidationRulesResponse): FieldErrors {
   const errors: FieldErrors = {};
@@ -55,14 +68,27 @@ export function validateForm(values: FormValues, rules: ValidationRulesResponse)
   // Employment status
   if (!values.employmentStatus) {
     errors.employmentStatus = rules.personalInfo.employmentStatus.errorMessage;
+  } else if (values.employmentStatus === 'unemployed') {
+    errors.employmentStatus =
+      'Unemployed applicants are not eligible. Please apply when you have a source of income.';
   }
 
-  // Employment duration
-  const duration = toNumber(values.employmentDuration);
-  if (values.employmentDuration === '' || duration === null) {
-    errors.employmentDuration = 'Employment duration is required';
-  } else if (duration < rules.personalInfo.employmentDuration.min) {
-    errors.employmentDuration = rules.personalInfo.employmentDuration.errorMessage;
+  // Employment duration — only validated for applicants who are working.
+  const isWorking =
+    values.employmentStatus === 'employed' || values.employmentStatus === 'self_employed';
+
+  if (isWorking) {
+    const years = toNumber(values.employmentYears);
+    const months = toNumber(values.employmentMonths);
+
+    if (values.employmentYears === '' && values.employmentMonths === '') {
+      errors.employmentYears = 'Employment duration is required';
+    } else {
+      const totalMonths = (years ?? 0) * 12 + (months ?? 0);
+      if (totalMonths < rules.personalInfo.employmentDuration.min) {
+        errors.employmentYears = rules.personalInfo.employmentDuration.errorMessage;
+      }
+    }
   }
 
   // Monthly income
@@ -141,12 +167,15 @@ export function validateForm(values: FormValues, rules: ValidationRulesResponse)
  * Assumes `validateForm` has already passed.
  */
 export function toRequest(values: FormValues): EligibilityRequest {
+  const years = values.employmentYears === '' ? 0 : Number(values.employmentYears);
+  const months = values.employmentMonths === '' ? 0 : Number(values.employmentMonths);
+
   return {
     personalInfo: {
       age: Number(values.age),
       employmentStatus:
         values.employmentStatus as EligibilityRequest['personalInfo']['employmentStatus'],
-      employmentDuration: Number(values.employmentDuration),
+      employmentDuration: years * 12 + months,
     },
     financialInfo: {
       monthlyIncome: Number(values.monthlyIncome),
@@ -180,7 +209,7 @@ export function validateStep(
 ): FieldErrors {
   const allErrors = validateForm(values, rules);
   const fieldsForStep: Record<typeof step, (keyof FormValues)[]> = {
-    'about-you': ['age', 'employmentStatus', 'employmentDuration'],
+    'about-you': ['age', 'employmentStatus', 'employmentYears', 'employmentMonths'],
     finances: ['monthlyIncome', 'monthlyExpenses', 'existingDebt', 'creditScore'],
     loan: ['requestedAmount', 'loanTerm', 'loanPurpose'],
   };

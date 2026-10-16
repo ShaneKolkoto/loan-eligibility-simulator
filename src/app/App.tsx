@@ -68,8 +68,8 @@ export default function App() {
           ) : (
             <Card title="Your result">
               <p className={styles.placeholder}>
-                Fill in the form and select <strong>Check eligibility</strong> to see your
-                estimated result here.
+                Fill in the form and select <strong>Check eligibility</strong> to see your estimated
+                result here.
               </p>
             </Card>
           )}
