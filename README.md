@@ -85,7 +85,7 @@ breakdown of the reasoning.
 ### Install
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/ShaneKolkoto/loan-eligibility-simulator
 cd loan-eligibility-simulator
 pnpm install
 ```
